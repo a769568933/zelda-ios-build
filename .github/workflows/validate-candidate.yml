@@ -1,0 +1,44 @@
+name: Validate private packaged candidate
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-candidate.yml'
+      - 'tools/cloud_validation.py'
+      - 'tools/library_helpers/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packaged:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare Python validation environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/candidate-python"
+          "$RUNNER_TEMP/candidate-python/bin/pip" install 'cryptography>=46,<52' unicorn==2.1.4
+      - name: Create ephemeral intake key
+        run: "$RUNNER_TEMP/candidate-python/bin/python tools/cloud_validation.py key"
+      - name: Publish intake public key
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-intake-key-${{ github.run_id }}
+          path: build/candidate-intake-public.pem
+          retention-days: 1
+      - name: Validate private candidate and baseline
+        run: "$RUNNER_TEMP/candidate-python/bin/python tools/cloud_validation.py run"
+      - name: Upload reports only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-validation-report-${{ github.run_id }}
+          path: build/candidate-validation/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Destroy ephemeral private inputs
+        if: always()
+        run: "$RUNNER_TEMP/candidate-python/bin/python tools/cloud_validation.py clean"

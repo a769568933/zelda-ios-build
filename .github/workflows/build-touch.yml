@@ -2,6 +2,13 @@ name: Build iPhone touch controls
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'tools/build_cloud.sh'
+      - 'tools/test_simulator.py'
+      - '.github/workflows/build-touch.yml'
   workflow_dispatch:
 permissions:
   contents: read
