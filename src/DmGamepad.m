@@ -3,7 +3,7 @@
 //   2D (simple): side shoulders ZL above L (one column), ZR above R likewise; minus and plus at the top centre; a floating left stick in the lower-left region, with a small dead zone;
 //     the A (right) B (bottom) X (top) Y (left) diamond in the bottom-right corner, sliding a finger between keys switches keys. Each bottom corner holds a single control, so it sits close in (reaching halfway into the side safe-area inset).
 //   3D (full, Pro Controller style): everything in 2D, plus a D-pad (8-way), camera swipes in the unoccupied right half, and L3 / R3 (small round keys in the top row).
-//     Relative camera motion is sampled by the host HID read, without a UI display timer. Release stops it immediately.
+//     Relative camera motion is sampled by the host HID read, without a UI display timer. Unread release motion is consumed once; cancellation discards it.
 //     Breath of the Wild crouches with L3 and uses the scope with R3; 3D World and Breath of the Wild turn the camera with the right stick.
 //   Touch-down ownership: locked keys first (shoulders, minus / plus, the layout button, L3 / R3), then the diamond and D-pad, then the lower-left movement region, then camera swipes.
 //     The left origin stays at touch-down until release; full tilt is shortened toward a nearby screen edge so leftward movement remains reachable.
@@ -50,8 +50,9 @@ void dm_phone_camera_poll(void) {
     double now = CACurrentMediaTime();
     uint64_t frame = dm_guest_frame ? dm_guest_frame() : (uint64_t)(now * 60);
     pthread_mutex_lock(&g_mu);
-    if (g_camera.active && frame != g_camera_frame) {
-        double dt = fmin(0.1, fmax(1.0 / 240, now - g_camera_time));
+    if (frame != g_camera_frame) {
+        double dt = g_camera_time > 0 ? now - g_camera_time : 1.0 / 60;
+        dt = fmin(0.1, fmax(1.0 / 240, dt));
         dm_pad_swipe_axes(&g_camera, dt, g_camera_scale, &g_touch_rx, &g_touch_ry);
         g_camera_time = now; g_camera_frame = frame;
     }
@@ -258,13 +259,14 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
     pthread_mutex_lock(&g_mu);
     dm_pad_swipe_begin(&g_camera, padPoint([touch locationInView:self]));
     g_touch_rx = g_touch_ry = 0; g_camera_scale = self.u;
-    g_camera_time = CACurrentMediaTime(); g_camera_frame = UINT64_MAX;
+    // Normalize against the game read interval, including its idle portion.
+    // Resetting the clock here turns a short stroke into a full-stick pulse.
     pthread_mutex_unlock(&g_mu);
 }
 - (void)stopCamera {
     _cameraTouch = nil;
     pthread_mutex_lock(&g_mu);
-    g_touch_rx = g_touch_ry = 0; dm_pad_swipe_end(&g_camera);
+    g_touch_rx = g_touch_ry = 0; dm_pad_swipe_cancel(&g_camera);
     g_camera_frame = UINT64_MAX;
     pthread_mutex_unlock(&g_mu);
 }
@@ -314,7 +316,8 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
         if ([self inSwap:p]) { [_owner setObject:@(C_SWAP) forKey:t]; continue; }
         // Explicit controls take priority over the large gesture regions.
         CGFloat best = 1; int kind = C_NONE;
-        CGFloat f = dist(p, self.faceCenter) / (self.faceGap + self.faceR * 1.6); if (f <= best) { best = f; kind = C_FACE; }
+        CGFloat f = dist(p, self.faceCenter) / (self.faceGap + self.faceR * 1.6);
+        if ([self faceAt:p] && f <= best) { best = f; kind = C_FACE; }
         if (_full) { CGFloat d = dist(p, self.dpadCenter) / (self.dpadR * K_DPAD_GRAB); if (d < best) { best = d; kind = C_DPAD; } }
         if (kind == C_NONE && !_stick && [self inLeftArea:p]) kind = C_STICK;
         if (kind == C_NONE && _full && !_cameraTouch && [self inRightArea:p]) kind = C_CAMERA;
@@ -351,7 +354,16 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
         if ((v & 0xff) == C_GAME && (v >> 8) < 16) { _game[v >> 8] = nil; game = YES; }
         [_owner removeObjectForKey:t]; [_faceOf removeObjectForKey:t];
         if (t == _stick) { _stick = nil; dm_pad_stick_end(&_left); }
-        if (t == _cameraTouch) [self stopCamera];
+        if (t == _cameraTouch) {
+            if (ended) {
+                pthread_mutex_lock(&g_mu);
+                dm_pad_swipe_move(&g_camera, padPoint([t locationInView:self]));
+                dm_pad_swipe_end(&g_camera);
+                g_touch_rx = g_touch_ry = 0;
+                pthread_mutex_unlock(&g_mu);
+                _cameraTouch = nil;
+            } else [self stopCamera];
+        }
     }
     if (game) [self pushGame];
     [self recompute];

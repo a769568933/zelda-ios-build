@@ -54,20 +54,21 @@ static inline void dm_pad_stick_axes(const dm_pad_stick *s, dm_pad_rect b, doubl
 }
 
 static inline void dm_pad_swipe_begin(dm_pad_swipe *s, dm_pad_point p) {
-    *s = (dm_pad_swipe){.last = p, .active = 1};
+    s->last = p; s->active = 1; // an unread release delta survives a fast re-touch
 }
 static inline void dm_pad_swipe_move(dm_pad_swipe *s, dm_pad_point p) {
     if (!s->active) return;
     s->pending.x += p.x - s->last.x; s->pending.y += p.y - s->last.y;
     s->last = p;
 }
-static inline void dm_pad_swipe_end(dm_pad_swipe *s) { *s = (dm_pad_swipe){0}; }
+static inline void dm_pad_swipe_end(dm_pad_swipe *s) { s->active = 0; }
+static inline void dm_pad_swipe_cancel(dm_pad_swipe *s) { *s = (dm_pad_swipe){0}; }
 static inline int32_t dm_pad_camera_axis(double speed) {
     return (int32_t)lrint(fmax(-1, fmin(1, speed)) * 32767);
 }
 static inline void dm_pad_swipe_axes(dm_pad_swipe *s, double seconds, double scale, int32_t *x, int32_t *y) {
     *x = *y = 0;
-    if (s->active && isfinite(seconds) && seconds > 0 && scale > 0) {
+    if (isfinite(seconds) && seconds > 0 && scale > 0) {
         double full_speed = 480 * scale; // points per second, independent of touch-event frequency
         *x = dm_pad_camera_axis(s->pending.x / (seconds * full_speed));
         *y = dm_pad_camera_axis(-s->pending.y / (seconds * full_speed));

@@ -124,8 +124,32 @@ static int camera_release(void) {
     dm_pad_swipe_begin(&s, (dm_pad_point){600, 200});
     dm_pad_swipe_move(&s, (dm_pad_point){800, 20});
     dm_pad_swipe_end(&s);
+    dm_pad_swipe_axes(&s, 1.0 / 60, 1, &x, &y); CHECK(x == 32767 && y == 32767);
     dm_pad_swipe_axes(&s, 1.0 / 60, 1, &x, &y); CHECK(x == 0 && y == 0);
     dm_pad_swipe_move(&s, (dm_pad_point){700, 100});
+    dm_pad_swipe_axes(&s, 1.0 / 60, 1, &x, &y); CHECK(x == 0 && y == 0);
+    return 0;
+}
+static int camera_short_release_between_reads(void) {
+    dm_pad_swipe s = {0}; int32_t x, y;
+    dm_pad_swipe_begin(&s, (dm_pad_point){600, 200});
+    dm_pad_swipe_move(&s, (dm_pad_point){602, 200});
+    dm_pad_swipe_end(&s);
+    dm_pad_swipe_axes(&s, 1.0 / 30, 1, &x, &y);
+    CHECK(x > 0 && y == 0);
+    dm_pad_swipe_axes(&s, 1.0 / 30, 1, &x, &y); CHECK(x == 0 && y == 0);
+    return 0;
+}
+static int camera_cancel_and_fast_retouch(void) {
+    dm_pad_swipe s = {0}; int32_t x, y;
+    dm_pad_swipe_begin(&s, (dm_pad_point){600, 200});
+    dm_pad_swipe_move(&s, (dm_pad_point){602, 200}); dm_pad_swipe_end(&s);
+    dm_pad_swipe_begin(&s, (dm_pad_point){700, 200});
+    dm_pad_swipe_move(&s, (dm_pad_point){702, 200}); dm_pad_swipe_end(&s);
+    dm_pad_swipe_axes(&s, 1.0 / 60, 1, &x, &y);
+    CHECK(x > 16000 && x < 17000 && y == 0); // four points, no jump between contacts
+    dm_pad_swipe_begin(&s, (dm_pad_point){600, 200});
+    dm_pad_swipe_move(&s, (dm_pad_point){606, 200}); dm_pad_swipe_cancel(&s);
     dm_pad_swipe_axes(&s, 1.0 / 60, 1, &x, &y); CHECK(x == 0 && y == 0);
     return 0;
 }
@@ -153,7 +177,8 @@ int main(void) {
     int (*cases[])(void) = {left_area, touch_origin, edge_left, fixed_center_and_limit,
         dead_zone_and_diagonal, stick_release, scaled_phone, camera_area,
         camera_motion_and_stop, camera_sample_rate, camera_release,
-        concurrent_move_and_camera, camera_clamp_and_reverse};
+        concurrent_move_and_camera, camera_clamp_and_reverse, camera_short_release_between_reads,
+        camera_cancel_and_fast_retouch};
     for (unsigned i = 0; i < sizeof cases / sizeof *cases; i++) if (cases[i]()) return 1;
-    puts("13 touch-motion regression cases passed"); return 0;
+    printf("%zu touch-motion regression cases passed\n", sizeof cases / sizeof *cases); return 0;
 }

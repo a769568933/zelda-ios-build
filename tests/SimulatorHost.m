@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <math.h>
+#include <unistd.h>
 #include "front.h"
 
 static uint64_t buttons;
@@ -91,10 +92,12 @@ static void runTests(void) {
         check((buttons & 1) != 0 && axes[0] < 0 && axes[2] > 0, "three simultaneous controls");
         end(pad, camera); check(axes[2] == 0 && axes[0] < 0 && (buttons & 1), "camera release preserves other fingers");
         end(pad, attack); check(buttons == 0 && axes[0] < 0, "button release preserves movement");
+        usleep(50000); // a 20 FPS read interval includes time before touch-down
         camera = finger(500, 180); begin(pad, camera);
         camera.point = CGPointMake(506, 180);
         end(pad, camera); poll(YES);
         check(axes[2] > 0 && axes[3] == 0, "terminal touch position survives release before a game read");
+        check(axes[2] < 16384, "short swipe uses the full game read interval instead of time since touch-down");
         poll(YES); check(axes[2] == 0 && axes[3] == 0, "released swipe has no second camera sample");
         CGPoint centre = ((CGPoint (*)(id, SEL))objc_msgSend)(pad, NSSelectorFromString(@"faceCenter"));
         camera = finger(centre.x, centre.y); begin(pad, camera);

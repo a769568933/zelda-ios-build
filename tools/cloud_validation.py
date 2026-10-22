@@ -75,6 +75,13 @@ def run():
                                  padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
         payload = json.loads(AESGCM(symmetric).decrypt(base64.b64decode(envelope['nonce']),
                              base64.b64decode(envelope['ciphertext']), RUN_ID.encode()))
+        expected_tests = payload.get('expected_candidate_tests', 26)
+        expected_failures = payload.get('baseline_expected_failures')
+        if type(expected_tests) is not int or not 1 <= expected_tests <= 1000:
+            raise ValueError('Invalid expected test count')
+        if expected_failures is not None and (not isinstance(expected_failures, list)
+                or not expected_failures or not all(isinstance(x, str) for x in expected_failures)):
+            raise ValueError('Invalid baseline expectation')
         helper = ROOT / 'tools/library_helpers/library_file_transfer.py'
         paths = {}
         for entry in payload['inputs']:
@@ -106,8 +113,11 @@ def run():
                 failures = details['failed']
                 report['baseline_reproduced'] = (code == 1 and len(failures) == 3 and not details['errors']
                     and all('NativeStartupTests.' in name for name in failures))
+                if expected_failures is not None:
+                    report['baseline_reproduced'] = (code == 1 and sorted(failures) == sorted(expected_failures)
+                        and details['tests_run'] == expected_tests and not details['errors'] and not details['skipped'])
             else:
-                report['packaged_cpu_checks_passed'] = (code == 0 and details['tests_run'] == 26
+                report['packaged_cpu_checks_passed'] = (code == 0 and details['tests_run'] == expected_tests
                     and not details['failed'] and not details['errors'] and not details['skipped'])
         # Rebuild the open-source module against the current Apple SDK and run
         # the actual simulator input host. This is separate from the game IPA.
