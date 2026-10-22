@@ -1,0 +1,30 @@
+name: Build iPhone touch controls
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: touch-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15-arm64
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Compile and test device and simulator modules
+        run: bash tools/build_cloud.sh
+      - name: Upload unsigned module and validation results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: iphone-touch-controls
+          path: |
+            build/DmPhoneControls.dylib
+            build/build-info.json
+            build/simulator-result.json
+          if-no-files-found: error
+          retention-days: 7
