@@ -91,6 +91,17 @@ static void runTests(void) {
         check((buttons & 1) != 0 && axes[0] < 0 && axes[2] > 0, "three simultaneous controls");
         end(pad, camera); check(axes[2] == 0 && axes[0] < 0 && (buttons & 1), "camera release preserves other fingers");
         end(pad, attack); check(buttons == 0 && axes[0] < 0, "button release preserves movement");
+        camera = finger(500, 180); begin(pad, camera);
+        camera.point = CGPointMake(506, 180);
+        end(pad, camera); poll(YES);
+        check(axes[2] > 0 && axes[3] == 0, "terminal touch position survives release before a game read");
+        poll(YES); check(axes[2] == 0 && axes[3] == 0, "released swipe has no second camera sample");
+        CGPoint centre = ((CGPoint (*)(id, SEL))objc_msgSend)(pad, NSSelectorFromString(@"faceCenter"));
+        camera = finger(centre.x, centre.y); begin(pad, camera);
+        move(pad, camera, centre.x - 6, centre.y); poll(YES);
+        check(axes[2] < 0 && buttons == 0, "empty gap between face buttons starts a camera gesture");
+        [pad touchesCancelled:[NSSet setWithObject:camera] withEvent:nil]; poll(YES);
+        check(axes[2] == 0 && axes[3] == 0, "cancelled gesture discards pending camera motion");
         [pad touchesCancelled:[NSSet setWithObject:left] withEvent:nil];
         check(axes[0] == 0 && axes[1] == 0, "cancellation resets movement");
 
