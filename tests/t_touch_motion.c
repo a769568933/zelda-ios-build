@@ -4,7 +4,7 @@
 #include "../src/DmTouchMotion.h"
 
 // These cases exercise the same C helpers used by DmGamepad, without UIKit.
-// A fixed origin, a full-width throw at the left edge, or retained camera
+// A drifting origin, a full-width throw at the left edge, or retained camera
 // deltas after a stationary frame must fail their respective regression cases.
 #define CHECK(expr) do { if (!(expr)) { fprintf(stderr, "%s:%d: %s\n", __func__, __LINE__, #expr); return 1; } } while (0)
 static const dm_pad_rect phone = {0, 0, 874, 402};
@@ -40,15 +40,23 @@ static int edge_left(void) {
     CHECK(x == -32767 && y == 0); // even less than the normal minimum throw remains reachable
     return 0;
 }
-static int following_center(void) {
+static int fixed_center_and_limit(void) {
     dm_pad_stick s = {0};
     dm_pad_stick_begin(&s, (dm_pad_point){180, 250});
     dm_pad_stick_move(&s, (dm_pad_point){300, 250}, 60);
-    CHECK(near(s.center.x, 240) && near(s.center.y, 250));
-    dm_pad_stick_move(&s, (dm_pad_point){160, 250}, 60);
-    CHECK(near(s.center.x, 220));
+    CHECK(near(s.center.x, 180) && near(s.center.y, 250));
     int32_t x, y; dm_pad_stick_axes(&s, phone, 1, 60, &x, &y);
-    CHECK(x == -32767 && y == 0);
+    CHECK(x == 32767 && y == 0);
+    dm_pad_stick_move(&s, (dm_pad_point){160, 250}, 60);
+    CHECK(near(s.center.x, 180));
+    dm_pad_stick_axes(&s, phone, 1, 60, &x, &y);
+    CHECK(x < 0 && x > -32767 && y == 0);
+    dm_pad_stick_move(&s, (dm_pad_point){180, 250}, 60);
+    dm_pad_stick_axes(&s, phone, 1, 60, &x, &y);
+    CHECK(x == 0 && y == 0);
+    dm_pad_stick_end(&s);
+    dm_pad_stick_begin(&s, (dm_pad_point){300, 280});
+    CHECK(near(s.center.x, 300) && near(s.center.y, 280));
     return 0;
 }
 static int dead_zone_and_diagonal(void) {
@@ -142,7 +150,7 @@ static int camera_clamp_and_reverse(void) {
     return 0;
 }
 int main(void) {
-    int (*cases[])(void) = {left_area, touch_origin, edge_left, following_center,
+    int (*cases[])(void) = {left_area, touch_origin, edge_left, fixed_center_and_limit,
         dead_zone_and_diagonal, stick_release, scaled_phone, camera_area,
         camera_motion_and_stop, camera_sample_rate, camera_release,
         concurrent_move_and_camera, camera_clamp_and_reverse};

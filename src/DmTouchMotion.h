@@ -26,8 +26,8 @@ static inline void dm_pad_stick_begin(dm_pad_stick *s, dm_pad_point p) {
 static inline void dm_pad_stick_move(dm_pad_stick *s, dm_pad_point p, double radius) {
     if (!s->active || radius <= 0) return;
     s->point = p;
-    double dx = p.x - s->center.x, dy = p.y - s->center.y, d = hypot(dx, dy);
-    if (d > radius) s->center = (dm_pad_point){p.x - dx * radius / d, p.y - dy * radius / d};
+    // The origin is locked until release. Axes and the visual knob saturate
+    // at their limits; dragging beyond them never moves the ring.
 }
 static inline void dm_pad_stick_end(dm_pad_stick *s) { *s = (dm_pad_stick){0}; }
 static inline void dm_pad_stick_axes(const dm_pad_stick *s, dm_pad_rect b, double scale, double radius, int32_t *x, int32_t *y) {

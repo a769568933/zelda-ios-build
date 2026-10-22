@@ -17,7 +17,7 @@ build_module() {
     -framework CoreText -framework QuartzCore -framework CoreGraphics -o "$out/DmPhoneControls.dylib"
 }
 
-python3 -m unittest discover -s tests -p test_pack.py -v
+python3 -m unittest discover -s tests -v
 clang -std=c11 -Wall -Wextra -Werror tests/t_touch_motion.c -lm -o build/t_touch_motion
 ./build/t_touch_motion
 build_module iphoneos arm64-apple-ios16.0 build/device
@@ -34,7 +34,7 @@ import hashlib, json, os, subprocess
 from tools.pack_ipa import commands, exports
 p = Path('build/DmPhoneControls.dylib'); data = p.read_bytes()
 assert not any(c == 0x1d for c, _, _ in commands(data)), 'Device module is signed'
-assert {'_dm_phone_gamepad_view', '_dm_phone_gamepad_reset'} <= exports(data)
+assert {'_dm_phone_gamepad_view', '_dm_phone_gamepad_reset', '_dm_phone_camera_poll'} <= exports(data)
 result = json.loads(Path('build/simulator-result.json').read_text())
 assert result['status'] == 'passed'
 info = {'source_commit': os.environ.get('GITHUB_SHA', 'local'),
