@@ -52,7 +52,7 @@ run(['xcrun', 'simctl', 'launch', '--console', '--terminate-running-process', ud
 container = subprocess.check_output(['xcrun', 'simctl', 'get_app_container', udid, identifier, 'data'], text=True).strip()
 result = Path(container) / 'Documents/touch-result.json'
 data = json.loads(result.read_text())
-if data.get('status') != 'passed' or data.get('checks', 0) < 19:
+if data.get('status') != 'passed' or data.get('checks', 0) < 20:
     raise RuntimeError('Simulator integration checks failed')
 shutil.copyfile(result, ROOT / 'build/simulator-result.json')
 print(json.dumps(data))
