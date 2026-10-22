@@ -121,6 +121,13 @@ def add_dylib(data):
     return bytes(result)
 
 
+def archive_entry(name):
+    entry = zipfile.ZipInfo(name); entry.compress_type = zipfile.ZIP_DEFLATED
+    entry.create_system = 3  # honor Unix permissions even when packaging on Windows
+    entry.external_attr = (0o100755 if name.endswith('.dylib') else 0o100644) << 16
+    return entry
+
+
 def assemble(original, build_dir, output):
     original, build_dir, output = Path(original), Path(build_dir), Path(output)
     if output.exists():
@@ -161,9 +168,7 @@ def assemble(original, build_dir, output):
                     content = changed.pop(entry.filename, None)
                     target.writestr(copy.copy(entry), source.read(entry) if content is None else content)
                 for name, content in changed.items():
-                    entry = zipfile.ZipInfo(name); entry.compress_type = zipfile.ZIP_DEFLATED
-                    entry.external_attr = (0o100755 if name.endswith('.dylib') else 0o100644) << 16
-                    target.writestr(entry, content)
+                    target.writestr(archive_entry(name), content)
             with zipfile.ZipFile(temporary) as check:
                 bad = check.testzip()
                 if bad:

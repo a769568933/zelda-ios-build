@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import os
 from pathlib import Path
 import struct
@@ -69,6 +70,15 @@ class PackagingTests(unittest.TestCase):
     def test_rejects_unknown_host_before_patching(self):
         with self.assertRaisesRegex(ValueError, 'Unsupported'):
             self.packer.verify_host(image())
+
+    def test_added_library_has_portable_executable_permissions(self):
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as archive:
+            archive.writestr(self.packer.archive_entry('Frameworks/Controls.dylib'), b'fixture')
+        with zipfile.ZipFile(stream) as archive:
+            entry = archive.infolist()[0]
+            self.assertEqual(entry.create_system, 3, 'Extractors must interpret the mode as Unix')
+            self.assertEqual(entry.external_attr >> 16, 0o100755)
 
     @unittest.skipUnless(os.environ.get('ZELDA_ORIGINAL_IPA'), 'Original app stays local')
     def test_actual_host_exports_and_code_preservation(self):
