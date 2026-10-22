@@ -21,7 +21,7 @@ sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-
 executable = app / 'TouchHarness'
 run(['xcrun', 'clang', '-target', 'arm64-apple-ios16.0-simulator', '-isysroot', sdk,
      '-fobjc-arc', '-fblocks', '-O1', '-Iinclude', '-framework', 'UIKit',
-     '-framework', 'Foundation', '-Wl,-export_dynamic', '-Wl,-headerpad,0x1000',
+     '-framework', 'Foundation', '-framework', 'CoreGraphics', '-Wl,-export_dynamic', '-Wl,-headerpad,0x1000',
      'tests/SimulatorHost.m', '-o', str(executable)], cwd=ROOT)
 run(['codesign', '--remove-signature', str(executable)], stdout=subprocess.DEVNULL)
 executable.write_bytes(add_dylib(executable.read_bytes()))

@@ -14,7 +14,7 @@ build_module() {
     -Wl,-undefined,dynamic_lookup -Wl,-no_fixup_chains \
     -Wl,-install_name,@rpath/DmPhoneControls.dylib \
     -framework UIKit -framework Foundation -framework GameController -framework CoreMotion \
-    -framework CoreText -framework QuartzCore -o "$out/DmPhoneControls.dylib"
+    -framework CoreText -framework QuartzCore -framework CoreGraphics -o "$out/DmPhoneControls.dylib"
 }
 
 python3 -m unittest discover -s tests -p test_pack.py -v
