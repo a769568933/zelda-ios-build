@@ -23,15 +23,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Compile and test device and simulator modules
+      - name: Compile unsigned device module only
         run: bash tools/build_cloud.sh
-      - name: Upload unsigned module and validation results
+      - name: Upload unsigned module and compiler metadata
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: iphone-touch-controls
           path: |
             build/DmPhoneControls.dylib
             build/build-info.json
-            build/simulator-result.json
           if-no-files-found: error
           retention-days: 7

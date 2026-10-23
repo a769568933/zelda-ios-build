@@ -2,11 +2,11 @@
 //   Two layouts; one tap on the layout button at the top centre (labelled with the current layout, "2D" / "3D") switches them, and the choice is kept in NSUserDefaults (each game is its own app, so per game); the first launch uses the game profile's pad_layout (DM_GAME_PAD_FULL).
 //   2D (simple): side shoulders ZL above L (one column), ZR above R likewise; minus and plus at the top centre; a floating left stick in the lower-left region, with a small dead zone;
 //     the A (right) B (bottom) X (top) Y (left) diamond in the bottom-right corner, sliding a finger between keys switches keys. Each bottom corner holds a single control, so it sits close in (reaching halfway into the side safe-area inset).
-//   3D (full, Pro Controller style): everything in 2D, plus a D-pad (8-way), camera swipes in the unoccupied right half, and L3 / R3 (small round keys in the top row).
-//     Relative camera motion is sampled by the host HID read, without a UI display timer. Unread release motion is consumed once; cancellation discards it.
+//   3D (full, Pro Controller style): everything in 2D, plus a D-pad (8-way), a floating right camera stick, and L3 / R3 (small round keys in the top row).
+//     Both stick origins stay at touch-down. Knobs and axes clamp; holding a deflection preserves it, and release or cancellation clears it immediately.
 //     Breath of the Wild crouches with L3 and uses the scope with R3; 3D World and Breath of the Wild turn the camera with the right stick.
-//   Touch-down ownership: locked keys first (shoulders, minus / plus, the layout button, L3 / R3), then the diamond and D-pad, then the lower-left movement region, then camera swipes.
-//     The left origin stays at touch-down until release; full tilt is shortened toward a nearby screen edge so leftward movement remains reachable.
+//   Touch-down ownership: locked keys first (shoulders, minus / plus, the layout button, L3 / R3), then the diamond and D-pad, then movement and camera regions.
+//     Full tilt is shortened toward a nearby screen edge for either stick.
 //   Everything hugs the edges and corners to leave the picture room; controls sit over the picture, one CAShapeLayer each: a press only swaps the fill, a stick only moves its knob, nothing redraws the whole screen.
 //   Touches no control takes go to the game's touch screen (pushGame; Super Mario Galaxy's pointer in handheld mode).
 //   The virtual gamepad (layout button included) hides while a physical controller is connected and comes back when it is removed; meanwhile every touch goes to the game. Physical controllers keep every button (D-pad and right stick included) and map by position: bottom = B, right = A, left = Y, top = X (same positions as on a Switch controller).
@@ -29,10 +29,6 @@ enum { C_NONE = 0, C_STICK, C_DPAD, C_FACE, C_BTN, C_SWAP, C_GAME, C_CAMERA };  
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t g_touch_btn, g_pad_btn, g_shake_btn;
 static int32_t g_touch_lx, g_touch_ly, g_touch_rx, g_touch_ry, g_pad_lx, g_pad_ly, g_pad_rx, g_pad_ry;
-static dm_pad_swipe g_camera;
-static double g_camera_scale = 1, g_camera_time;
-static uint64_t g_camera_frame = UINT64_MAX;
-extern uint64_t dm_guest_frame(void) __attribute__((weak_import));
 static int tilted(int32_t x, int32_t y) { return (int64_t)x * x + (int64_t)y * y > (int64_t)4000 * 4000; }
 static void publish(void) {
     pthread_mutex_lock(&g_mu);
@@ -43,22 +39,12 @@ static void publish(void) {
     pthread_mutex_unlock(&g_mu);
 }
 
-// Called on the game thread immediately before the original HID state read.
-// Repeated readers in one game frame see one stable sample. No UIView or layer
-// is touched here. Touch updates and controller callbacks use the same mutex.
+// Retain the host callback ABI. A held stick is state, so polling never consumes
+// or clears it. UIKit events publish both sticks together under the mutex.
 void dm_phone_camera_poll(void) {
-    double now = CACurrentMediaTime();
-    uint64_t frame = dm_guest_frame ? dm_guest_frame() : (uint64_t)(now * 60);
-    pthread_mutex_lock(&g_mu);
-    if (frame != g_camera_frame) {
-        double dt = g_camera_time > 0 ? now - g_camera_time : 1.0 / 60;
-        dt = fmin(0.1, fmax(1.0 / 240, dt));
-        dm_pad_swipe_axes(&g_camera, dt, g_camera_scale, &g_touch_rx, &g_touch_ry);
-        g_camera_time = now; g_camera_frame = frame;
-    }
-    pthread_mutex_unlock(&g_mu);
     publish();
 }
+const char *dm_phone_control_mode(void) { return "dual-locked-sticks-v1"; }
 
 // ---- Shaking the phone ----
 // The accelerometer at 60 Hz (no gyroscope, no permission prompt): gravity is followed by a slow low-pass (about 0.8 s), and a sample whose acceleration beyond it exceeds DM_SHAKE_G
@@ -115,14 +101,14 @@ static __weak DmGamepad *g_view;
 @implementation DmGamepad {
     NSMapTable<UITouch *, NSNumber *> *_owner;     // touch to control (button or game-touch slot in the high bits)
     UITouch *_stick, *_cameraTouch;
-    dm_pad_stick _left;
+    dm_pad_stick _left, _right;
     CGRect _layoutBounds;
     uint64_t _faceBits, _dpadBits, _btnBits;
     NSMapTable<UITouch *, NSNumber *> *_faceOf;    // which keys each touch on the diamond currently holds
     CAShapeLayer *_key[B_N]; CATextLayer *_label[B_N];   // one layer per key
-    CAShapeLayer *_ring, *_knob;                   // the left stick (the right one is not drawn)
+    CAShapeLayer *_ring, *_knob, *_rightRing, *_rightKnob;
     CAShapeLayer *_swap; CATextLayer *_swapLabel; BOOL _swapHeld;
-    BOOL _stickShown;                              // the left stick was held at the last refresh
+    BOOL _stickShown;
     BOOL _full;                                    // the 3D layout is current
     CALayer *_controls;                            // holds every control layer: hidden while a physical controller is connected (the view itself stays, for game touches)
     BOOL _padOff;                                  // a physical controller is connected: every touch goes to the game
@@ -158,6 +144,8 @@ static BOOL fullOnly(int b) { return b == B_LS || b == B_RS || b >= B_LEFT; }   
         _knob = shape(_controls);
         CAShapeLayer *in = [CAShapeLayer layer]; in.fillColor = nil; in.strokeColor = k_line.CGColor; in.lineWidth = 1.5;   // inner ring of the knob
         [_knob addSublayer:in];
+        _rightRing = shape(_controls); _rightRing.fillColor = k_ringFill.CGColor;
+        _rightKnob = shape(_controls);
         static NSString *const names[B_N] = {@"A", @"B", @"X", @"Y", @"L3", @"R3", @"L", @"R", @"ZL", @"ZR", @"+", @"−"};
         for (int b = 0; b < B_N; b++) {
             _key[b] = shape(_controls);
@@ -252,23 +240,23 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
     if (d > R) { dx *= R / d; dy *= R / d; }
     return CGPointMake(dx, dy);
 }
+- (CGPoint)rightCentre { return CGPointMake(_right.center.x, _right.center.y); }
+- (CGPoint)rightKnobOffset {
+    if (!_right.active) return CGPointZero;
+    CGFloat dx = _right.point.x - _right.center.x, dy = _right.point.y - _right.center.y;
+    CGFloat d = hypot(dx, dy), r = self.stickR;
+    if (d > r) { dx *= r / d; dy *= r / d; }
+    return CGPointMake(dx, dy);
+}
 
 // ---- Touch ----
 - (void)startCamera:(UITouch *)touch {
     _cameraTouch = touch;
-    pthread_mutex_lock(&g_mu);
-    dm_pad_swipe_begin(&g_camera, padPoint([touch locationInView:self]));
-    g_touch_rx = g_touch_ry = 0; g_camera_scale = self.u;
-    // Normalize against the game read interval, including its idle portion.
-    // Resetting the clock here turns a short stroke into a full-stick pulse.
-    pthread_mutex_unlock(&g_mu);
+    dm_pad_stick_begin(&_right, padPoint([touch locationInView:self]));
 }
 - (void)stopCamera {
     _cameraTouch = nil;
-    pthread_mutex_lock(&g_mu);
-    g_touch_rx = g_touch_ry = 0; dm_pad_swipe_cancel(&g_camera);
-    g_camera_frame = UINT64_MAX;
-    pthread_mutex_unlock(&g_mu);
+    dm_pad_stick_end(&_right);
 }
 - (void)recompute {
     uint64_t face = 0; for (UITouch *t in _faceOf) face |= [_faceOf objectForKey:t].unsignedLongLongValue;
@@ -277,25 +265,26 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
         if (c == C_BTN) btn |= 1ull << (v >> 8);
         else if (c == C_DPAD) dpad |= [self dpadAt:[t locationInView:self]];
         else if (c == C_SWAP) swap = YES; }
-    int32_t lx, ly;
+    int32_t lx, ly, rx, ry;
     dm_pad_stick_axes(&_left, padBounds(self.bounds), self.u, self.stickR, &lx, &ly);
+    dm_pad_stick_axes(&_right, padBounds(self.bounds), self.u, self.stickR, &rx, &ry);
     BOOL changed = face != _faceBits || dpad != _dpadBits || btn != _btnBits || swap != _swapHeld;
     _faceBits = face; _dpadBits = dpad; _btnBits = btn; _swapHeld = swap;
     pthread_mutex_lock(&g_mu);
     g_touch_btn = face | dpad | btn; g_touch_lx = lx; g_touch_ly = ly;
+    g_touch_rx = rx; g_touch_ry = ry;
     pthread_mutex_unlock(&g_mu);
     publish();
-    BOOL stick = _stick != nil;   // only the left stick is drawn
+    BOOL stick = _stick != nil || _cameraTouch != nil;
     if (changed || stick || _stickShown) [self refresh];   // also refresh on the stick release so the knob returns to the centre
     _stickShown = stick;
 }
-// Touches no control takes (all of them while a physical controller is connected) go to the game's touch screen, normalized on the 16:9 picture that front_ios.m
-// centres in the screen: Super Mario Galaxy's pointer in handheld mode (profile op_mode). The host reports them only in handheld mode, as on the Switch (hle_hid.c touch_read)
+// Unowned touches map to the full native game picture. The host reports them
+// only in handheld mode, as on the Switch (hle_hid.c touch_read).
 - (void)pushGame {
     CGRect b = self.bounds; CGFloat w = b.size.width, h = b.size.height;
     if (w <= 0 || h <= 0) return;
-    if (w / h > 16.0 / 9.0) w = h * 16.0 / 9.0; else h = w * 9.0 / 16.0;
-    CGFloat x0 = (b.size.width - w) / 2, y0 = (b.size.height - h) / 2;
+    CGFloat x0 = b.origin.x, y0 = b.origin.y;
     dm_touch t[16]; int n = 0;
     for (int i = 0; i < 16; i++) if (_game[i]) {
         CGPoint p = [_game[i] locationInView:self];
@@ -336,11 +325,7 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
         uint64_t v = [_owner objectForKey:t].unsignedLongLongValue; int c = (int)(v & 0xff); CGPoint p = [t locationInView:self];
         if (c == C_FACE) [_faceOf setObject:@([self faceAt:p]) forKey:t];
         else if (c == C_STICK) dm_pad_stick_move(&_left, padPoint(p), self.stickR);
-        else if (c == C_CAMERA) {
-            pthread_mutex_lock(&g_mu);
-            dm_pad_swipe_move(&g_camera, padPoint(p));
-            pthread_mutex_unlock(&g_mu);
-        }
+        else if (c == C_CAMERA) dm_pad_stick_move(&_right, padPoint(p), self.stickR);
         else if (c == C_GAME) game = YES;
     }
     if (game) [self pushGame];
@@ -354,16 +339,7 @@ static CGFloat dist(CGPoint a, CGPoint b) { return hypot(a.x - b.x, a.y - b.y); 
         if ((v & 0xff) == C_GAME && (v >> 8) < 16) { _game[v >> 8] = nil; game = YES; }
         [_owner removeObjectForKey:t]; [_faceOf removeObjectForKey:t];
         if (t == _stick) { _stick = nil; dm_pad_stick_end(&_left); }
-        if (t == _cameraTouch) {
-            if (ended) {
-                pthread_mutex_lock(&g_mu);
-                dm_pad_swipe_move(&g_camera, padPoint([t locationInView:self]));
-                dm_pad_swipe_end(&g_camera);
-                g_touch_rx = g_touch_ry = 0;
-                pthread_mutex_unlock(&g_mu);
-                _cameraTouch = nil;
-            } else [self stopCamera];
-        }
+        if (t == _cameraTouch) [self stopCamera];
     }
     if (game) [self pushGame];
     [self recompute];
@@ -436,6 +412,10 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     setPath(_knob, circlePath(CGPointMake(k, k), k));
     CAShapeLayer *in = (CAShapeLayer *)_knob.sublayers.firstObject; CGPathRef ip = circlePath(CGPointMake(k, k), k * 0.62);
     in.frame = _knob.bounds; in.path = ip; CGPathRelease(ip);
+    _rightRing.bounds = _ring.bounds;
+    setPath(_rightRing, circlePath(CGPointMake(r, r), r));
+    _rightKnob.bounds = _knob.bounds;
+    setPath(_rightKnob, circlePath(CGPointMake(k, k), k));
     [CATransaction commit];
     [self refresh];
 }
@@ -449,6 +429,11 @@ static void placeLabel(CATextLayer *t, CGPoint c, CGFloat fs) {
     CGPoint h = self.stickCentre, o = self.knobOffset;
     _ring.position = h;
     _knob.position = CGPointMake(h.x + o.x, h.y + o.y); _knob.fillColor = (_stick ? k_on : k_idle).CGColor;
+    _rightRing.hidden = _rightKnob.hidden = !_right.active;
+    CGPoint rh = self.rightCentre, ro = self.rightKnobOffset;
+    _rightRing.position = rh;
+    _rightKnob.position = CGPointMake(rh.x + ro.x, rh.y + ro.y);
+    _rightKnob.fillColor = k_on.CGColor;
     [CATransaction commit];
 }
 

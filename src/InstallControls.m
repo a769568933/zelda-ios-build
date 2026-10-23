@@ -30,7 +30,7 @@ static char overlayKey;
         if (!old[i] || !next[i]) { NSLog(@"[phone-controls] Required method missing; keeping the original controls"); return; }
     }
     for (int i = 0; i < 3; i++) method_exchangeImplementations(old[i], next[i]);
-    NSLog(@"[phone-controls] Locked-origin movement and release-safe HID camera installed");
+    NSLog(@"[phone-controls] Dual locked-origin sticks installed; release returns to neutral");
 }
 - (instancetype)phone_initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
