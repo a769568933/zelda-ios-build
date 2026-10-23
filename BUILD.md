@@ -1,10 +1,9 @@
 # Build and assemble
 
-The cloud job builds only the open-source touch module, then runs portable
-input tests and a UIKit simulator host. It contains no game executable,
+The cloud job only compiles the open-source touch module. Analysis, portable
+tests, compiled-component checks, packaging and validation run locally. It contains no game executable,
 assets, keys, saves, or shaders. The device module and final game IPA are
-unsigned. The disposable simulator host uses local ad-hoc signing solely to
-run on the ephemeral simulator; it does not use a developer certificate.
+unsigned. No simulator or private candidate validation is run in GitHub.
 
 The module replaces initialization, layout and reset of the old exported
 `DmGamepad` class with a container holding the new `DmPhoneGamepad` view.
@@ -14,8 +13,12 @@ libraries are retained. The local packer checks the exact original host hash
 and its real export trie before adding one load command in unused header
 padding; no original code or game module is moved or rewritten.
 
-After a successful Actions run, download `iphone-touch-controls`, unpack it,
-and assemble locally:
+After a successful Actions run, download `iphone-touch-controls` and unpack
+the unsigned dylib and compiler metadata. The current compiler-only artifact
+records simulator tests as not run; it must not be presented as simulator
+validated. Validate the returned module locally before using the project's
+local packer. The original public packer below describes the older
+simulator-validated artifact format and rejects the new format:
 
 ```sh
 python tools/pack_ipa.py ORIGINAL-20261020-Lite.ipa downloaded-artifact New-TouchControls-Unsigned.ipa
