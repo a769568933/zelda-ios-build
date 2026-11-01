@@ -1,5 +1,10 @@
 # Build and assemble
 
+The optional independent TV module and its local packer are described in
+[docs/EXTERNAL_DISPLAY.md](docs/EXTERNAL_DISPLAY.md). The compile artifact
+includes both unsigned modules and separate compiler metadata. The TV UIKit
+fixture is compiled only; no UIKit/simulator/game tests run in GitHub.
+
 The cloud job only compiles the open-source touch module. Analysis, portable
 tests, compiled-component checks, packaging and validation run locally. It contains no game executable,
 assets, keys, saves, or shaders. The device module and final game IPA are
@@ -41,3 +46,4 @@ public input interface, not the private game executable.
 Sources copied from `seedds/nxnative` at
 `4f0b555e75caf1f88cd84dda85c1859418e24a46`, with the owner's requested touch
 changes. See LICENSE for the upstream MIT notice.
+

@@ -32,5 +32,8 @@ jobs:
           path: |
             build/DmPhoneControls.dylib
             build/build-info.json
+            build/DmExternalDisplay.dylib
+            build/external-display-build.json
           if-no-files-found: error
           retention-days: 7
+

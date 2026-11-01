@@ -88,7 +88,7 @@ def verify_host(data):
         raise ValueError('The original host must be unsigned')
 
 
-def add_dylib(data):
+def add_dylib(data, load_path=LOAD_PATH):
     entries = commands(data)
     end = 32 + struct.unpack_from('<I', data, 20)[0]
     first_data = len(data)
@@ -96,7 +96,7 @@ def add_dylib(data):
         if cmd in (0xc, 0x80000018, 0x8000001f):
             relative = struct.unpack_from('<I', data, p + 8)[0]
             name = data[p + relative:p + size].split(b'\0', 1)[0]
-            if name == LOAD_PATH.encode():
+            if name == load_path.encode():
                 raise ValueError('Touch module is already loaded')
         if cmd == 0x19:
             count = struct.unpack_from('<I', data, p + 64)[0]
@@ -109,7 +109,7 @@ def add_dylib(data):
                 flags = struct.unpack_from('<I', data, s + 64)[0] & 0xff
                 if length and offset and flags not in (1, 0xc, 0x12):
                     first_data = min(first_data, offset)
-    name = LOAD_PATH.encode() + b'\0'; length = (24 + len(name) + 7) & ~7
+    name = load_path.encode() + b'\0'; length = (24 + len(name) + 7) & ~7
     if end + length > first_data:
         raise ValueError('Insufficient header space; no executable data may move')
     if any(data[end:end + length]):
@@ -185,3 +185,4 @@ if __name__ == '__main__':
     parser.add_argument('original_ipa'); parser.add_argument('build_directory'); parser.add_argument('output_ipa')
     args = parser.parse_args()
     assemble(args.original_ipa, args.build_directory, args.output_ipa)
+
