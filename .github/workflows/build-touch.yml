@@ -1,14 +1,5 @@
-name: Build iPhone touch controls
+name: Manual fallback - iPhone modules
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'include/**'
-      - 'tests/**'
-      - 'tools/build_cloud.sh'
-      - 'tools/test_simulator.py'
-      - '.github/workflows/build-touch.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,16 +15,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Compile unsigned device module only
-        run: bash tools/build_cloud.sh
+        run: bash tools/build_local.sh
       - name: Upload unsigned module and compiler metadata
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: iphone-touch-controls
           path: |
-            build/DmPhoneControls.dylib
-            build/build-info.json
-            build/DmExternalDisplay.dylib
-            build/external-display-build.json
+            build/local.*/DmPhoneControls.dylib
+            build/local.*/build-info.json
+            build/local.*/DmExternalDisplay.dylib
+            build/local.*/external-display-build.json
           if-no-files-found: error
           retention-days: 7
 

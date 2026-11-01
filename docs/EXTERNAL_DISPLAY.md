@@ -20,12 +20,18 @@ support instead of installing a second adapter.
 
 ## Build and package
 
-GitHub only compiles unsigned modules and the UIKit fixture. It does not run
-simulator or game tests. Download the `iphone-touch-controls` artifact, then
-run the local packer with Python 3.11 or newer:
+The default is local macOS/Xcode compilation (see [BUILD.md](../BUILD.md)).
+GitHub automatic builds are disabled. Compile and assemble in one command:
 
 ```sh
-python3 tools/pack_external.py Current-Unsigned.ipa downloaded-artifact Zelda-TV16x9-Unsigned.ipa --report tv-package-report.json
+bash tools/build_local.sh Current-Unsigned.ipa Zelda-TV16x9-Unsigned.ipa
+```
+
+Alternatively compile without arguments, then use the new build directory
+with the Python 3.11+ packer:
+
+```sh
+python3 tools/pack_external.py Current-Unsigned.ipa build/local.ABCDEF Zelda-TV16x9-Unsigned.ipa --report tv-package-report.json
 ```
 
 The packer accepts a compatible scene-based 16:9 source IPA. It preserves the
@@ -45,7 +51,7 @@ metadata; use `pack_external.py` for this compile-only external artifact.
 Portable geometry and Python packaging tests run locally. The included
 `ExternalDisplayHarness.m` checks session-level UIKit reparenting, same-layer
 identity, scale restoration, control placement and zero-size targets on a
-local Apple UIKit host. GitHub compiles that fixture without executing it.
+local Apple UIKit host. The build scripts compile that fixture without executing it.
 It does not cover a physical cable/TV, real iOS 27 scene activation, the full
 swizzled-host lifecycle or GPU frame pacing. Those require device acceptance.
 

@@ -1,12 +1,67 @@
-# Build and assemble
+# Local build and assemble
+
+Local macOS compilation is the default. Requirements: full Xcode selected as
+the active developer directory, its iPhoneOS SDK, and Python 3.11+. Command Line
+Tools alone cannot build UIKit for iPhone. No signing credentials are needed.
+
+From a terminal in this directory:
+
+```sh
+bash tools/build_local.sh --check
+bash tools/build_local.sh
+```
+
+You may also double-click `Build-Local.command` in Finder. If executable bits
+were lost during ZIP extraction, use the terminal command above. The check-only
+mode performs no compilation. Each build creates a fresh `build/local.XXXXXX/`
+directory; a failed run exits nonzero and never assembles using an old module.
+Paths containing spaces are supported, including invocation outside this directory.
+
+The output contains `DmPhoneControls.dylib`, `build-info.json`,
+`DmExternalDisplay.dylib` and `external-display-build.json`, plus object files.
+Metadata identifies the source, dirty state, compiler and module hashes. It does
+not label compilation as simulator, game or hardware acceptance.
+
+To compile and then assemble independent TV output locally:
+
+```sh
+bash tools/build_local.sh "/path/Current-Unsigned.ipa" "/path/TV16x9-Unsigned.ipa"
+```
+
+The input must be a compatible scene-based unsigned 16:9 host. The second
+argument is optional; its default is `Game-TV16x9-Unsigned.ipa` in the new build
+directory. Existing output files are rejected. `ipa-report.json` records resource
+and archive verification. This adds the external module and preserves the input
+IPA's existing controls; the separately compiled touch module is not installed
+by this TV packer. No signing, installation or game execution is performed.
+
+Portable checks (Linux or Mac) use:
+
+```sh
+python3 -W error::ResourceWarning -m unittest discover -s tests -p 'test_*.py' -v
+cc -std=c11 -Wall -Wextra -Werror -pedantic -Isrc tests/t_external_geometry.c -lm -o /tmp/t_external_geometry
+/tmp/t_external_geometry
+cc -std=c11 -Wall -Wextra -Werror -pedantic tests/t_touch_motion.c -lm -o /tmp/t_touch_motion
+/tmp/t_touch_motion
+```
+
+Local build CLI tests substitute Apple compiler tools to test orchestration;
+they do not compile iOS code. The original-host test is skipped unless the
+private `ZELDA_ORIGINAL_IPA` input is supplied locally.
+
+## Manual GitHub fallback
+
+The workflow has only `workflow_dispatch`; source pushes no longer start builds.
+Do not dispatch it for the default local workflow. `tools/build_cloud.sh` is a
+compatibility alias for the local entry and contains no remote dispatch.
 
 The optional independent TV module and its local packer are described in
 [docs/EXTERNAL_DISPLAY.md](docs/EXTERNAL_DISPLAY.md). The compile artifact
 includes both unsigned modules and separate compiler metadata. The TV UIKit
 fixture is compiled only; no UIKit/simulator/game tests run in GitHub.
 
-The cloud job only compiles the open-source touch module. Analysis, portable
-tests, compiled-component checks, packaging and validation run locally. It contains no game executable,
+The optional manual cloud job only compiles the open-source modules. Analysis, portable
+tests, compiled-component checks, packaging and validation run locally. The repository contains no game executable,
 assets, keys, saves, or shaders. The device module and final game IPA are
 unsigned. No simulator or private candidate validation is run in GitHub.
 
@@ -18,8 +73,9 @@ libraries are retained. The local packer checks the exact original host hash
 and its real export trie before adding one load command in unused header
 padding; no original code or game module is moved or rewritten.
 
-After a successful Actions run, download `iphone-touch-controls` and unpack
-the unsigned dylib and compiler metadata. The current compiler-only artifact
+For an explicitly requested manual Actions run, download `iphone-touch-controls`
+and locate its `local.XXXXXX` directory with the unsigned dylibs and metadata.
+The current compiler-only artifact
 records simulator tests as not run; it must not be presented as simulator
 validated. Validate the returned module locally before using the project's
 local packer. The original public packer below describes the older
